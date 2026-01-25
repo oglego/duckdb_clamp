@@ -1,11 +1,70 @@
-# Quack
+# Clamp
 
 This repository is based on https://github.com/duckdb/extension-template, check it out if you want to build and ship your own DuckDB extension.
 
 ---
 
-This extension, Quack, allow you to ... <extension_goal>.
+# DuckDB Clamp Extension
 
+This extension adds a `clamp` scalar function to DuckDB, allowing you to restrict (clamp) a value to a specified minimum and maximum bound.
+
+## Features
+
+- Supports both `BIGINT` (integer) and `DOUBLE` (floating point) types.
+- Returns the value if it is within bounds, otherwise returns the nearest bound.
+- Returns `NULL` if any input is `NULL`.
+- Throws an error if the minimum bound is greater than the maximum bound.
+
+## Installation
+
+1. Build the extension according to DuckDB's extension build instructions.
+2. Place the compiled extension in your DuckDB extensions directory.
+
+## Usage
+
+Load the extension in DuckDB:
+
+```sql
+INSTALL clamp;
+LOAD clamp;
+```
+
+Use the `clamp` function in your queries:
+
+```sql
+SELECT clamp(15, 10, 20);      -- Returns 15
+SELECT clamp(5, 10, 20);       -- Returns 10
+SELECT clamp(25, 10, 20);      -- Returns 20
+SELECT clamp(3.14, 2.71, 4.0); -- Returns 3.14
+SELECT clamp(NULL, 10, 20);    -- Returns NULL
+SELECT clamp(15, 20, 10);      -- Throws error: Minimum bound (20) cannot be greater than maximum bound (10).
+```
+
+## Function Signature
+
+```sql
+clamp(value, min, max)
+```
+
+- `value`: The value to clamp.
+- `min`: The minimum bound.
+- `max`: The maximum bound.
+
+## Error Handling
+
+If `min > max`, the function throws an error:
+
+```
+CLAMP error: Minimum bound (X) cannot be greater than maximum bound (Y).
+```
+
+## Testing
+
+See `test/sql/clamp.test` for example queries and expected results.
+
+```bash
+make test
+```
 
 ## Building
 ### Managing dependencies
@@ -26,25 +85,11 @@ The main binaries that will be built are:
 ```sh
 ./build/release/duckdb
 ./build/release/test/unittest
-./build/release/extension/quack/quack.duckdb_extension
+./build/release/extension/clamp/clamp.duckdb_extension
 ```
 - `duckdb` is the binary for the duckdb shell with the extension code automatically loaded.
 - `unittest` is the test runner of duckdb. Again, the extension is already linked into the binary.
-- `quack.duckdb_extension` is the loadable binary as it would be distributed.
-
-## Running the extension
-To run the extension code, simply start the shell with `./build/release/duckdb`.
-
-Now we can use the features from the extension directly in DuckDB. The template contains a single scalar function `quack()` that takes a string arguments and returns a string:
-```
-D select quack('Jane') as result;
-┌───────────────┐
-│    result     │
-│    varchar    │
-├───────────────┤
-│ Quack Jane 🐥 │
-└───────────────┘
-```
+- `clamp.duckdb_extension` is the loadable binary as it would be distributed.
 
 ## Running the tests
 Different tests can be created for DuckDB extensions. The primary way of testing DuckDB extensions should be the SQL tests in `./test/sql`. These SQL tests can be run using:
@@ -81,8 +126,8 @@ DuckDB. To specify a specific version, you can pass the version instead.
 
 After running these steps, you can install and load your extension using the regular INSTALL/LOAD commands in DuckDB:
 ```sql
-INSTALL quack;
-LOAD quack;
+INSTALL clamp;
+LOAD clamp;
 ```
 
 ## Setting up CLion

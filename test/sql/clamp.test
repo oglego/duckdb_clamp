@@ -1,0 +1,100 @@
+# name: test/sql/clamp.test
+# description: test clamp extension
+# group: [sql]
+
+# Require statement will ensure this test is run with this extension loaded
+require clamp
+
+# Confirm the extension works
+query I
+SELECT clamp(15, 10, 20);
+----
+15
+
+# Test: value below minimum
+query I
+SELECT clamp(5, 10, 20);
+----
+10
+
+# Test: value above maximum
+query I
+SELECT clamp(25, 10, 20);
+----
+20
+
+# Test: value equal to minimum
+query I
+SELECT clamp(10, 10, 20);
+----
+10
+
+# Test: value equal to maximum
+query I
+SELECT clamp(20, 10, 20);
+----
+20
+
+# Test: minimum equals maximum
+query I
+SELECT clamp(15, 10, 10);
+----
+10
+
+# Test: negative numbers
+query I
+SELECT clamp(-5, -10, 0);
+----
+-5
+
+# Test: value below negative minimum
+query I
+SELECT clamp(-15, -10, 0);
+----
+-10
+
+# Test: value above zero maximum
+query I
+SELECT clamp(5, -10, 0);
+----
+0
+
+# Test: floating point values
+query I
+SELECT clamp(3.14, 2.71, 4.0);
+----
+3.14
+
+# Test: floating point below minimum
+query I
+SELECT clamp(2.0, 2.71, 4.0);
+----
+2.71
+
+# Test: floating point above maximum
+query I
+SELECT clamp(5.0, 2.71, 4.0);
+----
+4.0
+
+# Test: NULL input returns NULL
+query I
+SELECT clamp(NULL, 10, 20);
+----
+NULL
+
+query I
+SELECT clamp(15, NULL, 20);
+----
+NULL
+
+query I
+SELECT clamp(15, 10, NULL);
+----
+NULL
+
+# Test: minimum greater than maximum (should throw error)
+statement error
+SELECT clamp(15, 20, 10);
+----
+CLAMP error: Minimum bound (20) cannot be greater than maximum bound (10).
