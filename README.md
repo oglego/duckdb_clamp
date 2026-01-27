@@ -201,6 +201,37 @@ make test
 
 ---
 
+## Potential Future Additions
+
+While this extension currently provides a `clamp(value, min, max)` scalar function, it intentionally leaves room for other *mathematically restrictive or range-based utilities* that frequently appear in numerical computing, analytics, and graphics domains.
+
+Possible future additions include:
+
+- **Saturate**  
+  A specialized clamp that restricts values to the `[0, 1]` range. Common in graphics, normalization, and ML feature scaling.
+
+- **Wrap / Modulo Clamp**  
+  Wraps values around a range instead of clamping them (e.g., angles, cyclic time windows, periodic domains).
+
+- **Ping-Pong**  
+  Reflects values back and forth between bounds, useful for oscillating ranges or bounded waveforms.
+
+- **Lerp (Linear Interpolation)**  
+  Interpolates between two values using a normalized parameter, often used alongside clamping or saturation.
+
+- **Min-Max Normalization**  
+  Scales values from an arbitrary range into a target range (commonly `[0, 1]`).
+
+- **Clip**  
+  A semantic alias for clamp, matching terminology used in NumPy, PyTorch, and other scientific ecosystems.
+
+These functions share similar characteristics:
+- Simple scalar logic
+- No external dependencies
+- Deterministic and vectorizable execution
+
+As such, they would fit naturally into this extension if there is interest from the DuckDB community. The current implementation is intentionally minimal and designed to serve as a foundation for these kinds of additions.
+
 ## Legal Disclaimer
 
 THIS SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
