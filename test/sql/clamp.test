@@ -5,6 +5,10 @@
 # Require statement will ensure this test is run with this extension loaded
 require clamp
 
+# ------------------------------------------------------------------------------
+# CLAMP TESTS
+# ------------------------------------------------------------------------------
+
 # Confirm the extension works
 query I
 SELECT clamp(15, 10, 20);
@@ -98,3 +102,77 @@ statement error
 SELECT clamp(15, 20, 10);
 ----
 CLAMP error: Minimum bound (20) cannot be greater than maximum bound (10).
+
+# ------------------------------------------------------------------------------
+# SATURATE TESTS (clamp to [0.0, 1.0])
+# ------------------------------------------------------------------------------
+
+# Test: value inside range
+query I
+SELECT saturate(0.5);
+----
+0.5
+
+# Test: value below 0
+query I
+SELECT saturate(-0.25);
+----
+0.0
+
+# Test: value above 1
+query I
+SELECT saturate(1.75);
+----
+1.0
+
+# Test: value equal to 0
+query I
+SELECT saturate(0.0);
+----
+0.0
+
+# Test: value equal to 1
+query I
+SELECT saturate(1.0);
+----
+1.0
+
+# Test: NULL input returns NULL
+query I
+SELECT saturate(NULL);
+----
+NULL
+
+# ------------------------------------------------------------------------------
+# CLAMP01 TESTS (alias of saturate)
+# ------------------------------------------------------------------------------
+
+# Test: value inside range
+query I
+SELECT clamp01(0.25);
+----
+0.25
+
+# Test: value below 0
+query I
+SELECT clamp01(-1.0);
+----
+0.0
+
+# Test: value above 1
+query I
+SELECT clamp01(2.0);
+----
+1.0
+
+# Test: boundary values
+query II
+SELECT clamp01(0.0), clamp01(1.0);
+----
+0.0	1.0
+
+# Test: NULL input returns NULL
+query I
+SELECT clamp01(NULL);
+----
+NULL

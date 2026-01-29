@@ -41,11 +41,41 @@ static void ClampFunction(DataChunk &args, ExpressionState &state, Vector &resul
 }
 
 //------------------------------------------------------------------------------
+// SaturateOperator: Clamps a value to [0,1]
+//------------------------------------------------------------------------------
+struct SaturateOperator {
+	// Template function to clamp a value between 0 and 1
+	template <class T>
+	static inline T Operation(T val) {
+		if (val < T(0)) {
+			return T(0);
+		} else if (val > T(1)) {
+			return T(1);
+		} else {
+			return val;
+		}
+	}
+};
+
+//------------------------------------------------------------------------------
+// SaturateFunction: DuckDB executor wrapper for SaturateOperator
+//------------------------------------------------------------------------------
+template <class T>
+static void SaturateFunction(DataChunk &args, ExpressionState &state, Vector &result) {
+	// args.data[0]: value to saturate
+	UnaryExecutor::Execute<T, T>(args.data[0], result, args.size(), SaturateOperator::Operation<T>);
+}
+
+//------------------------------------------------------------------------------
 // LoadInternal: Registers the clamp function(s) with DuckDB
 //------------------------------------------------------------------------------
 static void LoadInternal(ExtensionLoader &loader) {
 	// Create a function set named "clamp" to support type overloading
 	ScalarFunctionSet clamp("clamp");
+
+	// ------------------------------------------------------------------------------
+	// CLAMP
+	// ------------------------------------------------------------------------------
 
 	// Define clamp for DOUBLE type
 	auto double_fun = ScalarFunction({LogicalType::DOUBLE, LogicalType::DOUBLE, LogicalType::DOUBLE}, // argument types
@@ -64,8 +94,30 @@ static void LoadInternal(ExtensionLoader &loader) {
 	clamp.AddFunction(double_fun);
 	clamp.AddFunction(bigint_fun);
 
+	// ------------------------------------------------------------------------------
+	// SATURATE
+	// ------------------------------------------------------------------------------
+	ScalarFunctionSet saturate("saturate");
+
+	// Define saturate for DOUBLE type
+	auto double_sat_fun = ScalarFunction({LogicalType::DOUBLE}, LogicalType::DOUBLE, SaturateFunction<double>);
+	double_sat_fun.null_handling = FunctionNullHandling::DEFAULT_NULL_HANDLING;
+	saturate.AddFunction(double_sat_fun);
+
+	// Define saturate for BIGINT (int64_t) type
+	auto bigint_sat_fun = ScalarFunction({LogicalType::BIGINT}, LogicalType::BIGINT, SaturateFunction<int64_t>);
+	bigint_sat_fun.null_handling = FunctionNullHandling::DEFAULT_NULL_HANDLING;
+	saturate.AddFunction(bigint_sat_fun);
+
+	// Create an alias for saturate
+	ScalarFunctionSet saturate_alias("clamp01");
+	saturate_alias.AddFunction(double_sat_fun);
+	saturate_alias.AddFunction(bigint_sat_fun);
+
 	// Register the function set with DuckDB
 	loader.RegisterFunction(clamp);
+	loader.RegisterFunction(saturate);
+	loader.RegisterFunction(saturate_alias);
 }
 
 //------------------------------------------------------------------------------
