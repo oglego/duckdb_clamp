@@ -97,6 +97,22 @@ SELECT clamp(15, 10, NULL);
 ----
 NULL
 
+# Test: NaN propagation
+query I
+SELECT clamp(CAST('NaN' AS DOUBLE), 10, 20);
+----
+NaN
+
+query I
+SELECT clamp(15, CAST('NaN' AS DOUBLE), 20);
+----
+NaN
+
+query I
+SELECT clamp(15, 10, CAST('NaN' AS DOUBLE));
+----
+NaN
+
 # Test: minimum greater than maximum (should throw error)
 statement error
 SELECT clamp(15, 20, 10);

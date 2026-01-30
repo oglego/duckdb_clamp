@@ -15,6 +15,11 @@ struct ClampOperator {
 	// Throws an exception if min_val > max_val
 	template <class T>
 	static inline T Operation(T val, T min_val, T max_val) {
+		// Handle NaN propagation
+		if (std::isnan(val) || std::isnan(min_val) || std::isnan(max_val)) {
+			return std::numeric_limits<T>::quiet_NaN();
+		}
+
 		// Validate bounds: min_val must not be greater than max_val
 		if (min_val > max_val) {
 			throw InvalidInputException("CLAMP error: Minimum bound (%s) cannot be greater than maximum bound (%s).",
