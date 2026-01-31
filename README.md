@@ -11,8 +11,7 @@ extension, that repository is a great starting point.
 
 # DuckDB Clamp Extension
 
-The Clamp extension adds a small family of scalar functions to DuckDB for
-restricting values to a range.
+The Clamp extension introduces range-clamping scalar functions to DuckDB. Initial development focuses on saturation arithmetic, with future plans to expand into additional math-based functions.
 
 It currently provides:
 
