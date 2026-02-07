@@ -72,6 +72,21 @@ static void SaturateFunction(DataChunk &args, ExpressionState &state, Vector &re
 }
 
 //------------------------------------------------------------------------------
+// WrapOperator: Wrap a value x into the range [min_val, max_val) using modular 
+// arithmetic. This is useful for cyclic values like angles.
+//
+// Definition:
+//   WRAP(x, min_val, max_val) = min_val + ((x - min_val) % (max_val - min_val))
+//
+// % is the floored modulus operator, which ensures the result is always in the 
+// range [0, max_val - min_val).
+//------------------------------------------------------------------------------
+
+//------------------------------------------------------------------------------
+// WrapFunction: DuckDB executor wrapper for WrapOperator
+//------------------------------------------------------------------------------
+
+//------------------------------------------------------------------------------
 // LoadInternal: Registers the clamp function(s) with DuckDB
 //------------------------------------------------------------------------------
 static void LoadInternal(ExtensionLoader &loader) {
