@@ -192,3 +192,85 @@ query I
 SELECT clamp01(NULL);
 ----
 NULL
+
+# ------------------------------------------------------------------------------
+# WRAP TESTS
+# ------------------------------------------------------------------------------
+
+# Test: Inside range (no change)
+query I
+SELECT wrap(15, 10, 20);
+----
+15
+
+# Test: Exact boundary (min returns min, max wraps to min)
+query II
+SELECT wrap(10, 10, 20), wrap(20, 10, 20);
+----
+10	10
+
+# Test: Wrapping forward (one full period)
+query I
+SELECT wrap(25, 10, 20);
+----
+15
+
+# Test: Wrapping forward (multiple periods)
+query I
+SELECT wrap(45, 10, 20);
+----
+15
+
+# Test: Wrapping backward (negative offset)
+query I
+SELECT wrap(5, 10, 20);
+----
+15
+
+# Test: Wrapping backward (multiple periods)
+query I
+SELECT wrap(-15, 10, 20);
+----
+15
+
+# Test: 360-degree wrapping (Angles)
+query III
+SELECT wrap(370, 0, 360), wrap(-10, 0, 360), wrap(720, 0, 360);
+----
+10.0	350.0	0.0
+
+# Test: Negative range wrapping
+query I
+SELECT wrap(-11, -10, -5);
+----
+-6
+
+# Test: NULL handling (should return NULL if any arg is NULL)
+query III
+SELECT wrap(NULL, 10, 20), wrap(15, NULL, 20), wrap(15, 10, NULL);
+----
+NULL	NULL	NULL
+
+# Test: NaN propagation
+query I
+SELECT wrap(CAST('NaN' AS DOUBLE), 0, 10);
+----
+NaN
+
+# Test: Minimum >= Maximum (should throw error)
+statement error
+SELECT wrap(15, 20, 10);
+----
+WRAP error: Minimum bound must be less than maximum bound.
+
+# Test: Minimum equals Maximum (should throw error)
+statement error
+SELECT wrap(15, 10, 10);
+----
+WRAP error: Minimum bound must be less than maximum bound.
+
+# Test: Precision edge case
+query I
+SELECT wrap(19.99999999999999, 10, 20);
+----
+19.99999999999999
