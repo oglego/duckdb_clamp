@@ -115,8 +115,9 @@ struct WrapOperator {
 
 		// Validate bounds: min_val must not be greater than or equal to max_val
 		if (min_val >= max_val) {
-			throw InvalidInputException("Error: Minimum bound (%s) cannot be greater than or equal to maximum bound (%s).",
-			                            std::to_string(min_val), std::to_string(max_val));
+			throw InvalidInputException(
+			    "Error: Minimum bound (%s) cannot be greater than or equal to maximum bound (%s).",
+			    std::to_string(min_val), std::to_string(max_val));
 		}
 
 		// The compiler picks the correct ModuloLogic overload at compile time
