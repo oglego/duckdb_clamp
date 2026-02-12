@@ -22,7 +22,7 @@ struct ClampOperator {
 
 		// Validate bounds: min_val must not be greater than max_val
 		if (min_val > max_val) {
-			throw InvalidInputException("CLAMP error: Minimum bound (%s) cannot be greater than maximum bound (%s).",
+			throw InvalidInputException("Error: Minimum bound (%s) cannot be greater than maximum bound (%s).",
 			                            std::to_string(min_val), std::to_string(max_val));
 		}
 		// Clamp value: If val < min_val, return min_val; if val > max_val, return max_val; else return val
@@ -113,8 +113,10 @@ struct WrapOperator {
 			}
 		}
 
+		// Validate bounds: min_val must not be greater than or equal to max_val
 		if (min_val >= max_val) {
-			throw InvalidInputException("WRAP error: Minimum bound must be less than maximum bound.");
+			throw InvalidInputException("Error: Minimum bound (%s) cannot be greater than or equal to maximum bound (%s).",
+			                            std::to_string(min_val), std::to_string(max_val));
 		}
 
 		// The compiler picks the correct ModuloLogic overload at compile time
@@ -164,6 +166,11 @@ static void LoadInternal(ExtensionLoader &loader) {
 	clamp.AddFunction(double_fun);
 	clamp.AddFunction(bigint_fun);
 
+	// Add alias for clamp
+	ScalarFunctionSet clamp_alias("clip");
+	clamp_alias.AddFunction(double_fun);
+	clamp_alias.AddFunction(bigint_fun);
+
 	// ------------------------------------------------------------------------------
 	// SATURATE
 	// ------------------------------------------------------------------------------
@@ -204,6 +211,7 @@ static void LoadInternal(ExtensionLoader &loader) {
 
 	// Register the function set with DuckDB
 	loader.RegisterFunction(clamp);
+	loader.RegisterFunction(clamp_alias);
 	loader.RegisterFunction(saturate);
 	loader.RegisterFunction(saturate_alias);
 	loader.RegisterFunction(wrap);

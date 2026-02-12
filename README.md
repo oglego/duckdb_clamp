@@ -16,8 +16,10 @@ The Clamp extension introduces range-clamping scalar functions to DuckDB. Initia
 It currently provides:
 
 - `clamp(value, min, max)` — clamp to an arbitrary range
+- `clip(value, min, max)` - alias for `clamp`
 - `saturate(value)` — clamp to the `[0, 1]` range
 - `clamp01(value)` — alias for `saturate`, common in graphics and ML
+- `wrap(value, min, max)` - Wrap a value x into the range [min_val, max_val) using modular arithmetic.
 
 All functions are implemented as native DuckDB scalar functions with
 vectorized execution for high performance.
@@ -28,15 +30,16 @@ vectorized execution for high performance.
 
 - Native DuckDB scalar functions (`ScalarFunctionSet`)
 - Vectorized execution via DuckDB executors
-  - `TernaryExecutor` for `clamp`
+  - `TernaryExecutor` for `clamp` / `clip` / `wrap`
   - `UnaryExecutor` for `saturate` / `clamp01`
 - Supports:
-  - `BIGINT` (`int64_t`) — `clamp`, `saturate1`, `clamp01`
-  - `DOUBLE` — `clamp`, `saturate`, `clamp01`
+  - `BIGINT` (`int64_t`) — `clamp`, `saturate1`, `clamp01`, `clip`, `wrap`
+  - `DOUBLE` — `clamp`, `saturate`, `clamp01`, `clip`, `wrap`
 - NULL-safe:
   - returns `NULL` if any input argument is `NULL`
 - Strict validation:
-  - `clamp` throws an error if `min > max`
+  - `clamp` / `clip` throws an error if `min > max`
+  - `wrap` throws an error if `min >= max`
 
 ---
 
@@ -119,6 +122,26 @@ SELECT clamp(15, 20, 10);
 
 ---
 
+### clip(value, min, max)
+
+Alias for clamp - restricts a value to an inclusive minimum and maximum bound.
+
+```sql
+-- Value within bounds
+SELECT clip(15, 10, 20);
+-- 15
+
+-- Below minimum
+SELECT clip(5, 10, 20);
+-- 10
+
+-- Above maximum
+SELECT clip(25, 10, 20);
+-- 20
+```
+
+---
+
 ### saturate(value)
 
 A specialized clamp that restricts a value to the `[0, 1]` range.
@@ -159,15 +182,42 @@ SELECT clamp01(0.25);
 SELECT clamp01(2.0);
 -- 1.0
 ```
+---
+### wrap(value, min, max)
 
+Wrap a value x into the range [min_val, max_val) using modular arithmetic. 
+
+Definition:
+
+WRAP(x, min_val, max_val) = min_val + ((x - min_val) % (max_val - min_val))
+
+```sql
+SELECT wrap(25, 10, 20);
+--15
+
+SELECT wrap(45, 10, 20);
+--15
+
+SELECT wrap(5, 10, 20);
+--15
+
+SELECT wrap(-15, 10, 20);
+--15
+
+SELECT wrap(370, 0, 360), wrap(-10, 0, 360), wrap(720, 0, 360);
+
+-- 10.0	350.0	0.0
+```
 ---
 
 ## Function Signatures
 
 ```
 clamp(value, min, max)
+clip(value, min, max)
 saturate(value)
 clamp01(value)
+wrap(value, min, max)
 ```
 
 ### Parameters
@@ -192,6 +242,8 @@ All arguments must be of the same type.
 | clamp     | ✓      | ✓      |
 | saturate  | ✓      | ✓      |
 | clamp01   | ✓      | ✓      |
+| clip      | ✓      | ✓      |
+| wrap      | ✓      | ✓      |
 
 ---
 
@@ -225,16 +277,12 @@ make test
 
 ## Potential Future Additions
 
-While this extension currently provides `clamp`, `saturate`, and
+While this extension currently provides `clamp`, `clip`, `wrap`, `saturate`, and
 `clamp01`, it intentionally leaves room for other mathematically
 range-based utilities that frequently appear in numerical computing,
 analytics, and graphics domains.
 
 Possible future additions include:
-
-- **Wrap / Modulo Clamp**  
-  Wraps values around a range instead of clamping them (e.g., angles,
-  cyclic time windows, periodic domains).
 
 - **Ping-Pong**  
   Reflects values back and forth between bounds, useful for oscillating
@@ -245,10 +293,6 @@ Possible future additions include:
 
 - **Min-Max Normalization**  
   Scales values from an arbitrary range into a target range.
-
-- **Clip**  
-  A semantic alias for `clamp`, matching terminology used in NumPy and
-  PyTorch.
 
 These functions share similar characteristics:
 
