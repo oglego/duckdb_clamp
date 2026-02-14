@@ -117,7 +117,121 @@ NaN
 statement error
 SELECT clamp(15, 20, 10);
 ----
-CLAMP error: Minimum bound (20) cannot be greater than maximum bound (10).
+Error: Minimum bound (20) cannot be greater than maximum bound (10).
+
+# ------------------------------------------------------------------------------
+# CLIP TESTS
+# ------------------------------------------------------------------------------
+
+# Confirm the extension works
+query I
+SELECT clip(15, 10, 20);
+----
+15
+
+# Test: value below minimum
+query I
+SELECT clip(5, 10, 20);
+----
+10
+
+# Test: value above maximum
+query I
+SELECT clip(25, 10, 20);
+----
+20
+
+# Test: value equal to minimum
+query I
+SELECT clip(10, 10, 20);
+----
+10
+
+# Test: value equal to maximum
+query I
+SELECT clip(20, 10, 20);
+----
+20
+
+# Test: minimum equals maximum
+query I
+SELECT clip(15, 10, 10);
+----
+10
+
+# Test: negative numbers
+query I
+SELECT clip(-5, -10, 0);
+----
+-5
+
+# Test: value below negative minimum
+query I
+SELECT clip(-15, -10, 0);
+----
+-10
+
+# Test: value above zero maximum
+query I
+SELECT clip(5, -10, 0);
+----
+0
+
+# Test: floating point values
+query I
+SELECT clip(3.14, 2.71, 4.0);
+----
+3.14
+
+# Test: floating point below minimum
+query I
+SELECT clip(2.0, 2.71, 4.0);
+----
+2.71
+
+# Test: floating point above maximum
+query I
+SELECT clip(5.0, 2.71, 4.0);
+----
+4.0
+
+# Test: NULL input returns NULL
+query I
+SELECT clip(NULL, 10, 20);
+----
+NULL
+
+query I
+SELECT clip(15, NULL, 20);
+----
+NULL
+
+query I
+SELECT clip(15, 10, NULL);
+----
+NULL
+
+# Test: NaN propagation
+query I
+SELECT clip(CAST('NaN' AS DOUBLE), 10, 20);
+----
+NaN
+
+query I
+SELECT clip(15, CAST('NaN' AS DOUBLE), 20);
+----
+NaN
+
+query I
+SELECT clip(15, 10, CAST('NaN' AS DOUBLE));
+----
+NaN
+
+# Test: minimum greater than maximum (should throw error)
+statement error
+SELECT clip(15, 20, 10);
+----
+Error: Minimum bound (20) cannot be greater than maximum bound (10).
 
 # ------------------------------------------------------------------------------
 # SATURATE TESTS (clamp to [0.0, 1.0])
@@ -192,3 +306,85 @@ query I
 SELECT clamp01(NULL);
 ----
 NULL
+
+# ------------------------------------------------------------------------------
+# WRAP TESTS
+# ------------------------------------------------------------------------------
+
+# Test: Inside range (no change)
+query I
+SELECT wrap(15, 10, 20);
+----
+15
+
+# Test: Exact boundary (min returns min, max wraps to min)
+query II
+SELECT wrap(10, 10, 20), wrap(20, 10, 20);
+----
+10	10
+
+# Test: Wrapping forward (one full period)
+query I
+SELECT wrap(25, 10, 20);
+----
+15
+
+# Test: Wrapping forward (multiple periods)
+query I
+SELECT wrap(45, 10, 20);
+----
+15
+
+# Test: Wrapping backward (negative offset)
+query I
+SELECT wrap(5, 10, 20);
+----
+15
+
+# Test: Wrapping backward (multiple periods)
+query I
+SELECT wrap(-15, 10, 20);
+----
+15
+
+# Test: 360-degree wrapping (Angles)
+query III
+SELECT wrap(370, 0, 360), wrap(-10, 0, 360), wrap(720, 0, 360);
+----
+10.0	350.0	0.0
+
+# Test: Negative range wrapping
+query I
+SELECT wrap(-11, -10, -5);
+----
+-6
+
+# Test: NULL handling (should return NULL if any arg is NULL)
+query III
+SELECT wrap(NULL, 10, 20), wrap(15, NULL, 20), wrap(15, 10, NULL);
+----
+NULL	NULL	NULL
+
+# Test: NaN propagation
+query I
+SELECT wrap(CAST('NaN' AS DOUBLE), 0, 10);
+----
+NaN
+
+# Test: Minimum >= Maximum (should throw error)
+statement error
+SELECT wrap(15, 20, 10);
+----
+Error: Minimum bound (20) cannot be greater than or equal to maximum bound (10).
+
+# Test: Minimum equals Maximum (should throw error)
+statement error
+SELECT wrap(15, 10, 10);
+----
+Error: Minimum bound (10) cannot be greater than or equal to maximum bound (10).
+
+# Test: Precision edge case
+query I
+SELECT wrap(19.99999999999999, 10, 20);
+----
+19.99999999999999

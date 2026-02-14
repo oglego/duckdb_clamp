@@ -22,7 +22,7 @@ struct ClampOperator {
 
 		// Validate bounds: min_val must not be greater than max_val
 		if (min_val > max_val) {
-			throw InvalidInputException("CLAMP error: Minimum bound (%s) cannot be greater than maximum bound (%s).",
+			throw InvalidInputException("Error: Minimum bound (%s) cannot be greater than maximum bound (%s).",
 			                            std::to_string(min_val), std::to_string(max_val));
 		}
 		// Clamp value: If val < min_val, return min_val; if val > max_val, return max_val; else return val
@@ -72,6 +72,74 @@ static void SaturateFunction(DataChunk &args, ExpressionState &state, Vector &re
 }
 
 //------------------------------------------------------------------------------
+// WrapOperator: Wrap a value x into the range [min_val, max_val) using modular
+// arithmetic. This is useful for cyclic values like angles.
+//
+// Definition:
+//   WRAP(x, min_val, max_val) = min_val + ((x - min_val) % (max_val - min_val))
+//
+// % is the floored modulus operator, which ensures the result is always in the
+// range [0, max_val - min_val).
+//------------------------------------------------------------------------------
+// Helper for Integers
+// Uses standard modulus operator and adjusts for negative results
+template <class T>
+static inline typename std::enable_if<std::is_integral<T>::value, T>::type ModuloLogic(T offset, T range) {
+	T result = offset % range;
+	if (result < 0)
+		result += range;
+	return result;
+}
+
+// Helper for Floating Point
+// Uses std::fmod and adjusts for negative results
+template <class T>
+static inline typename std::enable_if<std::is_floating_point<T>::value, T>::type ModuloLogic(T offset, T range) {
+	T result = std::fmod(offset, range);
+	if (result < 0)
+		result += range;
+	return result;
+}
+
+// Main WrapOperator that uses the appropriate ModuloLogic based on the type
+struct WrapOperator {
+	template <class T>
+	static inline T Operation(T val, T min_val, T max_val) {
+		// Use standard is_floating_point<T>::value for C++11 compatibility
+		if (std::is_floating_point<T>::value) {
+			if (std::isnan(static_cast<double>(val)) || std::isnan(static_cast<double>(min_val)) ||
+			    std::isnan(static_cast<double>(max_val))) {
+				return std::numeric_limits<T>::quiet_NaN();
+			}
+		}
+
+		// Validate bounds: min_val must not be greater than or equal to max_val
+		if (min_val >= max_val) {
+			throw InvalidInputException(
+			    "Error: Minimum bound (%s) cannot be greater than or equal to maximum bound (%s).",
+			    std::to_string(min_val), std::to_string(max_val));
+		}
+
+		// The compiler picks the correct ModuloLogic overload at compile time
+		return min_val + ModuloLogic<T>(val - min_val, max_val - min_val);
+	}
+};
+//------------------------------------------------------------------------------
+// WrapFunction: DuckDB executor wrapper for WrapOperator
+//------------------------------------------------------------------------------
+template <class T>
+static void WrapFunction(DataChunk &args, ExpressionState &state, Vector &result) {
+	// Uses DuckDB's TernaryExecutor to apply WrapOperator::Operation to each row
+	// args.data[0]: value to wrap
+	// args.data[1]: minimum bound
+	// args.data[2]: maximum bound
+	// result: output vector
+	// args.size(): number of rows
+	TernaryExecutor::Execute<T, T, T, T>(args.data[0], args.data[1], args.data[2], result, args.size(),
+	                                     WrapOperator::Operation<T>);
+}
+
+//------------------------------------------------------------------------------
 // LoadInternal: Registers the clamp function(s) with DuckDB
 //------------------------------------------------------------------------------
 static void LoadInternal(ExtensionLoader &loader) {
@@ -99,6 +167,11 @@ static void LoadInternal(ExtensionLoader &loader) {
 	clamp.AddFunction(double_fun);
 	clamp.AddFunction(bigint_fun);
 
+	// Add alias for clamp
+	ScalarFunctionSet clamp_alias("clip");
+	clamp_alias.AddFunction(double_fun);
+	clamp_alias.AddFunction(bigint_fun);
+
 	// ------------------------------------------------------------------------------
 	// SATURATE
 	// ------------------------------------------------------------------------------
@@ -119,10 +192,30 @@ static void LoadInternal(ExtensionLoader &loader) {
 	saturate_alias.AddFunction(double_sat_fun);
 	saturate_alias.AddFunction(bigint_sat_fun);
 
+	// ------------------------------------------------------------------------------
+	// WRAP
+	// ------------------------------------------------------------------------------
+	ScalarFunctionSet wrap("wrap");
+
+	// Define wrap for DOUBLE type
+	auto double_wrap_fun = ScalarFunction({LogicalType::DOUBLE, LogicalType::DOUBLE, LogicalType::DOUBLE},
+	                                      LogicalType::DOUBLE, WrapFunction<double>);
+	double_wrap_fun.null_handling = FunctionNullHandling::DEFAULT_NULL_HANDLING;
+
+	// Define wrap for BIGINT (int64_t) type
+	auto bigint_wrap_fun = ScalarFunction({LogicalType::BIGINT, LogicalType::BIGINT, LogicalType::BIGINT},
+	                                      LogicalType::BIGINT, WrapFunction<int64_t>);
+	bigint_wrap_fun.null_handling = FunctionNullHandling::DEFAULT_NULL_HANDLING;
+
+	wrap.AddFunction(double_wrap_fun);
+	wrap.AddFunction(bigint_wrap_fun);
+
 	// Register the function set with DuckDB
 	loader.RegisterFunction(clamp);
+	loader.RegisterFunction(clamp_alias);
 	loader.RegisterFunction(saturate);
 	loader.RegisterFunction(saturate_alias);
+	loader.RegisterFunction(wrap);
 }
 
 //------------------------------------------------------------------------------
