@@ -291,8 +291,14 @@ Possible future additions include:
 - **Lerp (Linear Interpolation)**  
   Interpolates between two values using a normalized parameter.
 
-- **Min-Max Normalization**  
-  Scales values from an arbitrary range into a target range.
+- **Fract**  
+  Returns the fractional (decimal) part of a floating-point number.
+
+- **IsPowerOfTwo**
+  Boolean check that returns `true` if a number is a power of two.
+
+- **DeltaAngle**
+  Calculates the shortest distance between two angles.
 
 These functions share similar characteristics:
 
