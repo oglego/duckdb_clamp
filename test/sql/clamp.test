@@ -388,3 +388,104 @@ query I
 SELECT wrap(19.99999999999999, 10, 20);
 ----
 19.99999999999999
+
+# ------------------------------------------------------------------------------
+# PINGPONG TESTS
+# ------------------------------------------------------------------------------
+
+# Test: Inside range ascending
+query I
+SELECT pingpong(13, 10, 20);
+----
+13.0
+
+# Test: Exact boundaries
+query II
+SELECT pingpong(10, 10, 20), pingpong(20, 10, 20);
+----
+10.0	20.0
+
+# Test: Bouncing back (descending)
+# 22 is 2 past the max (20), so it should be 20 - 2 = 18
+query I
+SELECT pingpong(22, 10, 20);
+----
+18.0
+
+# Test: Multiple periods (returning to start)
+# 30 is a full "round trip" (10 up, 10 down) from the start
+query I
+SELECT pingpong(30, 10, 20);
+----
+10.0
+
+# Test: Negative input (bouncing in the other direction)
+# 8 is 2 below the min (10), so it should bounce up to 12
+query I
+SELECT pingpong(8, 10, 20);
+----
+12.0
+
+# Test: Small range oscillation
+query I
+SELECT pingpong(1.5, 0.0, 1.0);
+----
+0.5
+
+# Test: NULL handling
+query III
+SELECT pingpong(NULL, 0, 10), pingpong(5, NULL, 10), pingpong(5, 0, NULL);
+----
+NULL	NULL	NULL
+
+# Test: NaN propagation
+query I
+SELECT pingpong(CAST('NaN' AS DOUBLE), 0, 10);
+----
+NaN
+
+# Test: Error handling (min > max)
+statement error
+SELECT pingpong(5, 20, 10);
+----
+Error: Minimum bound (20) cannot be greater than or equal to maximum bound (10).
+
+# ------------------------------------------------------------------------------
+# FRACT TESTS
+# ------------------------------------------------------------------------------
+
+# Test: Standard positive fractional part
+query I
+SELECT fract(1.75);
+----
+0.75
+
+# Test: Negative fractional part (should return 0.9, not -0.1)
+query I
+SELECT fract(-0.1);
+----
+0.9
+
+# Test: Whole numbers (should return 0.0)
+query II
+SELECT fract(5.0), fract(-2.0);
+----
+0.0	0.0
+
+# Test: Integer input (should return 0)
+query I
+SELECT fract(10);
+----
+0
+
+# Test: NULL handling
+query I
+SELECT fract(NULL);
+----
+NULL
+
+# Test: NaN propagation
+query I
+SELECT fract(CAST('NaN' AS DOUBLE));
+----
+NaN

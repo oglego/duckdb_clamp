@@ -209,6 +209,58 @@ SELECT wrap(370, 0, 360), wrap(-10, 0, 360), wrap(720, 0, 360);
 -- 10.0	350.0	0.0
 ```
 ---
+### pingpong(value, min, max)
+
+TODO - clean this up
+
+pingpong(val, min_val, max_val)
+
+Returns a value that "bounces" back and forth between the minimum and maximum boundaries.
+
+val: The input value (typically a timestamp or incrementing counter).
+
+min_val: The lower bound of the oscillation.
+
+max_val: The upper bound of the oscillation.
+
+Behavior:
+
+When val is min_val, the result is min_val.
+
+As val increases to max_val, the result increases linearly.
+
+As val continues past max_val, the result decreases back toward min_val.
+
+The function is periodic with a period of 2×(max_val−min_val).
+
+-- Oscillation between 10 and 20
+SELECT pingpong(12, 10, 20); -- Returns 12
+SELECT pingpong(18, 10, 20); -- Returns 18
+SELECT pingpong(22, 10, 20); -- Returns 18 (2 past the max, so 20 - 2)
+SELECT pingpong(28, 10, 20); -- Returns 12 (8 past the max, so 20 - 8)
+
+Technical Notes
+
+Periodicity: The output cycle repeats every 2×(max_val−min_val).
+
+Continuity:
+
+For DOUBLE types, pingpong() is a continuous function.
+
+For BIGINT types, the function is a discrete stepped approximation of a continuous wave. While it avoids the "teleportation" jump seen in wrap(), the values will increment/decrement by whole numbers.
+
+Internal Precision: By promoting inputs to double precision internally, the function avoids integer truncation errors (e.g., 3/20=0.15). This ensures that even with integer inputs, the "bounce" is calculated accurately before being rounded/cast back to the result type.
+
+Negative Handling: Using std::floor on the promoted double values ensures the oscillation remains mathematically consistent and phase-aligned across the entire number line, including negative inputs.
+
+---
+### fract(val)
+
+TODO
+
+add definitions and examples here
+
+---
 
 ## Function Signatures
 
@@ -278,21 +330,11 @@ make test
 ## Potential Future Additions
 
 While this extension currently provides `clamp`, `clip`, `wrap`, `saturate`, and
-`clamp01`, it intentionally leaves room for other mathematically
+others, it intentionally leaves room for other mathematically
 range-based utilities that frequently appear in numerical computing,
 analytics, and graphics domains.
 
 Possible future additions include:
-
-- **Ping-Pong**  
-  Reflects values back and forth between bounds, useful for oscillating
-  ranges or bounded waveforms.
-
-- **Lerp (Linear Interpolation)**  
-  Interpolates between two values using a normalized parameter.
-
-- **Fract**  
-  Returns the fractional (decimal) part of a floating-point number.
 
 - **IsPowerOfTwo**
   Boolean check that returns `true` if a number is a power of two.
