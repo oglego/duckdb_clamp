@@ -144,30 +144,28 @@ static void WrapFunction(DataChunk &args, ExpressionState &state, Vector &result
 //------------------------------------------------------------------------------
 // Helper for floating point types (double, float)
 template <class T>
-static inline typename std::enable_if<std::is_floating_point<T>::value, T>::type
-FractLogic(T a) {
-    return a - std::floor(a);
+static inline typename std::enable_if<std::is_floating_point<T>::value, T>::type FractLogic(T a) {
+	return a - std::floor(a);
 }
 
 // Helper for non-floating point types (int64_t, etc.)
 template <class T>
-static inline typename std::enable_if<!std::is_floating_point<T>::value, T>::type
-FractLogic(T a) {
-    return 0;
+static inline typename std::enable_if<!std::is_floating_point<T>::value, T>::type FractLogic(T a) {
+	return 0;
 }
 
 struct FractOperator {
-    template <class T>
-    static inline T Operation(T a) {
-        // No NaNs in integers, but let the compiler handle the check for floats
-        if (std::is_floating_point<T>::value) {
-            if (std::isnan(static_cast<double>(a))) {
-                return std::numeric_limits<T>::quiet_NaN();
-            }
-        }
-        
-        return FractLogic<T>(a);
-    }
+	template <class T>
+	static inline T Operation(T a) {
+		// No NaNs in integers, but let the compiler handle the check for floats
+		if (std::is_floating_point<T>::value) {
+			if (std::isnan(static_cast<double>(a))) {
+				return std::numeric_limits<T>::quiet_NaN();
+			}
+		}
+
+		return FractLogic<T>(a);
+	}
 };
 
 //------------------------------------------------------------------------------
@@ -217,7 +215,8 @@ struct PingPongOperator {
 
 		// Apply triangle bounce: abs(fract * period - range)
 		double triangle = (fract_part * period) - range;
-		if (triangle < 0) triangle = -triangle;
+		if (triangle < 0)
+			triangle = -triangle;
 
 		// Subtract from range and shift back to min_val
 		// Final cast back to T handles the return type (int64_t or double)
