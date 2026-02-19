@@ -190,43 +190,43 @@ static void FractFunction(DataChunk &args, ExpressionState &state, Vector &resul
 // Helper for Integers
 // Uses integer division and modulus to create a triangle wave pattern
 template <class T>
-static inline typename std::enable_if<std::is_integral<T>::value, T>::type 
-PingPongLogic(T val, T min_val, T max_val) {
-    // Calculate range. We use uint64_t for the range to safely 
-    // handle the case where max is max_int and min is min_int.
-    uint64_t u_range = static_cast<uint64_t>(max_val) - static_cast<uint64_t>(min_val);
-    if (u_range == 0) return min_val;
+static inline typename std::enable_if<std::is_integral<T>::value, T>::type PingPongLogic(T val, T min_val, T max_val) {
+	// Calculate range. We use uint64_t for the range to safely
+	// handle the case where max is max_int and min is min_int.
+	uint64_t u_range = static_cast<uint64_t>(max_val) - static_cast<uint64_t>(min_val);
+	if (u_range == 0)
+		return min_val;
 
-    // Calculate offset. We use __int128 if available for absolute safety,
-    // but for standard BIGINT, we can use careful logic with the range.
-    int64_t offset = static_cast<int64_t>(val) - static_cast<int64_t>(min_val);
+	// Calculate offset. We use __int128 if available for absolute safety,
+	// but for standard BIGINT, we can use careful logic with the range.
+	int64_t offset = static_cast<int64_t>(val) - static_cast<int64_t>(min_val);
 
-    // Euclidean Division: Calculate quotient and remainder such that 
-    // remainder is always in [0, u_range).
-    int64_t q = offset / static_cast<int64_t>(u_range);
-    int64_t r = offset % static_cast<int64_t>(u_range);
+	// Euclidean Division: Calculate quotient and remainder such that
+	// remainder is always in [0, u_range).
+	int64_t q = offset / static_cast<int64_t>(u_range);
+	int64_t r = offset % static_cast<int64_t>(u_range);
 
-    // Adjust for negative offsets to ensure a continuous wave across the origin
-    if (r < 0) {
-        r += u_range;
-        q -= 1;
-    }
+	// Adjust for negative offsets to ensure a continuous wave across the origin
+	if (r < 0) {
+		r += u_range;
+		q -= 1;
+	}
 
-    // Parity Check (The Bounce)
-    // If the quotient is even (0, 2, -2...), we are moving UP from min.
-    // If the quotient is odd (1, 3, -1, -3...), we are moving DOWN from max.
-    if (std::abs(q) % 2 == 0) {
-        return static_cast<T>(static_cast<uint64_t>(min_val) + r);
-    } else {
-        return static_cast<T>(static_cast<uint64_t>(max_val) - r);
-    }
+	// Parity Check (The Bounce)
+	// If the quotient is even (0, 2, -2...), we are moving UP from min.
+	// If the quotient is odd (1, 3, -1, -3...), we are moving DOWN from max.
+	if (std::abs(q) % 2 == 0) {
+		return static_cast<T>(static_cast<uint64_t>(min_val) + r);
+	} else {
+		return static_cast<T>(static_cast<uint64_t>(max_val) - r);
+	}
 }
 
 // Helper for Floating Point
 // Uses fmod and floating point arithmetic to create a triangle wave pattern
 template <class T>
-static inline typename std::enable_if<std::is_floating_point<T>::value, T>::type 
-PingPongLogic(T val, T min_val, T max_val) {
+static inline typename std::enable_if<std::is_floating_point<T>::value, T>::type PingPongLogic(T val, T min_val,
+                                                                                               T max_val) {
 	double d_val = static_cast<double>(val);
 	double d_min = static_cast<double>(min_val);
 	double d_max = static_cast<double>(max_val);
@@ -236,7 +236,8 @@ PingPongLogic(T val, T min_val, T max_val) {
 
 	// Use fmod for doubles instead of %
 	double t = std::fmod(d_val - d_min, period);
-	if (t < 0) t += period;
+	if (t < 0)
+		t += period;
 
 	if (t > range) {
 		return static_cast<T>(d_min + (period - t));
