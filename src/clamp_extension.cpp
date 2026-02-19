@@ -4,6 +4,9 @@
 #include "duckdb.hpp"
 #include "duckdb/function/scalar_function.hpp"
 #include <algorithm>
+#include <cmath>
+#include <limits>
+#include <type_traits>
 
 namespace duckdb {
 
@@ -183,6 +186,64 @@ static void FractFunction(DataChunk &args, ExpressionState &state, Vector &resul
 // between min_val and max_val. As 'val' increases, the result moves from
 // min to max, then reverses back to min.
 //------------------------------------------------------------------------------
+
+// Helper for Integers
+// Uses integer division and modulus to create a triangle wave pattern
+template <class T>
+static inline typename std::enable_if<std::is_integral<T>::value, T>::type 
+PingPongLogic(T val, T min_val, T max_val) {
+    // Calculate range. We use uint64_t for the range to safely 
+    // handle the case where max is max_int and min is min_int.
+    uint64_t u_range = static_cast<uint64_t>(max_val) - static_cast<uint64_t>(min_val);
+    if (u_range == 0) return min_val;
+
+    // Calculate offset. We use __int128 if available for absolute safety,
+    // but for standard BIGINT, we can use careful logic with the range.
+    int64_t offset = static_cast<int64_t>(val) - static_cast<int64_t>(min_val);
+
+    // Euclidean Division: Calculate quotient and remainder such that 
+    // remainder is always in [0, u_range).
+    int64_t q = offset / static_cast<int64_t>(u_range);
+    int64_t r = offset % static_cast<int64_t>(u_range);
+
+    // Adjust for negative offsets to ensure a continuous wave across the origin
+    if (r < 0) {
+        r += u_range;
+        q -= 1;
+    }
+
+    // Parity Check (The Bounce)
+    // If the quotient is even (0, 2, -2...), we are moving UP from min.
+    // If the quotient is odd (1, 3, -1, -3...), we are moving DOWN from max.
+    if (std::abs(q) % 2 == 0) {
+        return static_cast<T>(static_cast<uint64_t>(min_val) + r);
+    } else {
+        return static_cast<T>(static_cast<uint64_t>(max_val) - r);
+    }
+}
+
+// Helper for Floating Point
+// Uses fmod and floating point arithmetic to create a triangle wave pattern
+template <class T>
+static inline typename std::enable_if<std::is_floating_point<T>::value, T>::type 
+PingPongLogic(T val, T min_val, T max_val) {
+	double d_val = static_cast<double>(val);
+	double d_min = static_cast<double>(min_val);
+	double d_max = static_cast<double>(max_val);
+
+	double range = d_max - d_min;
+	double period = range * 2.0;
+
+	// Use fmod for doubles instead of %
+	double t = std::fmod(d_val - d_min, period);
+	if (t < 0) t += period;
+
+	if (t > range) {
+		return static_cast<T>(d_min + (period - t));
+	}
+	return static_cast<T>(d_min + t);
+}
+
 struct PingPongOperator {
 	template <class T>
 	static inline T Operation(T val, T min_val, T max_val) {
@@ -201,26 +262,8 @@ struct PingPongOperator {
 			    std::to_string(min_val), std::to_string(max_val));
 		}
 
-		// Promote to double for intermediate calculations to improve precision and avoid overflow
-		double d_val = static_cast<double>(val);
-		double d_min = static_cast<double>(min_val);
-		double d_max = static_cast<double>(max_val);
-
-		double range = d_max - d_min;
-		double period = range * 2.0;
-
-		// Calculate fract part for the triangle wave
-		double t = (d_val - d_min) / period;
-		double fract_part = t - std::floor(t);
-
-		// Apply triangle bounce: abs(fract * period - range)
-		double triangle = (fract_part * period) - range;
-		if (triangle < 0)
-			triangle = -triangle;
-
-		// Subtract from range and shift back to min_val
-		// Final cast back to T handles the return type (int64_t or double)
-		return static_cast<T>((range - triangle) + d_min);
+		// The compiler picks the correct PingPongLogic overload at compile time
+		return PingPongLogic<T>(val, min_val, max_val);
 	}
 };
 

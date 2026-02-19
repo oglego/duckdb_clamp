@@ -19,7 +19,9 @@ It currently provides:
 - `clip(value, min, max)` - alias for `clamp`
 - `saturate(value)` — clamp to the `[0, 1]` range
 - `clamp01(value)` — alias for `saturate`, common in graphics and ML
-- `wrap(value, min, max)` - Wrap a value x into the range [min_val, max_val) using modular arithmetic.
+- `wrap(value, min, max)` - Wrap a value x into the range [min_val, max_val) using modular arithmetic
+- `pingpong(value, min, max)` - Return a value that "bounces" back and forth between the minimum and maximum
+- `fract(value)` - Return the fractional (decimal) part of a number
 
 All functions are implemented as native DuckDB scalar functions with
 vectorized execution for high performance.
@@ -30,16 +32,17 @@ vectorized execution for high performance.
 
 - Native DuckDB scalar functions (`ScalarFunctionSet`)
 - Vectorized execution via DuckDB executors
-  - `TernaryExecutor` for `clamp` / `clip` / `wrap`
-  - `UnaryExecutor` for `saturate` / `clamp01`
+  - `TernaryExecutor` for `clamp` / `clip` / `wrap` / `pingpong`
+  - `UnaryExecutor` for `saturate` / `clamp01` / `fract`
 - Supports:
-  - `BIGINT` (`int64_t`) — `clamp`, `saturate1`, `clamp01`, `clip`, `wrap`
-  - `DOUBLE` — `clamp`, `saturate`, `clamp01`, `clip`, `wrap`
+  - `BIGINT` (`int64_t`) — `clamp`, `saturate1`, `clamp01`, `clip`, `wrap`, `pingpong`, `fract`
+  - `DOUBLE` — `clamp`, `saturate`, `clamp01`, `clip`, `wrap`, `pingpong`, `fract`
 - NULL-safe:
   - returns `NULL` if any input argument is `NULL`
 - Strict validation:
   - `clamp` / `clip` throws an error if `min > max`
   - `wrap` throws an error if `min >= max`
+  - `pingpong` throws an error if `min>=max`
 
 ---
 
@@ -211,55 +214,52 @@ SELECT wrap(370, 0, 360), wrap(-10, 0, 360), wrap(720, 0, 360);
 ---
 ### pingpong(value, min, max)
 
-TODO - clean this up
+Returns a value that "bounces" back and forth between the minimum and maximum
+boundaries.  This creates a triangle wave pattern, commonly used for smooth
+oscillations in animations and procedural generation.
 
-pingpong(val, min_val, max_val)
+When `value` is at `min`, the result is `min`.  As `value` increases toward 
+`max`, the result increases linearly.  Upon hitting `max`, the result reverses
+direction and decreases back toward `min`.  The output is periodic with a full
+"round-trip" period of 2 * (max-min).
 
-Returns a value that "bounces" back and forth between the minimum and maximum boundaries.
-
-val: The input value (typically a timestamp or incrementing counter).
-
-min_val: The lower bound of the oscillation.
-
-max_val: The upper bound of the oscillation.
-
-Behavior:
-
-When val is min_val, the result is min_val.
-
-As val increases to max_val, the result increases linearly.
-
-As val continues past max_val, the result decreases back toward min_val.
-
-The function is periodic with a period of 2×(max_val−min_val).
-
+```sql
 -- Oscillation between 10 and 20
-SELECT pingpong(12, 10, 20); -- Returns 12
-SELECT pingpong(18, 10, 20); -- Returns 18
-SELECT pingpong(22, 10, 20); -- Returns 18 (2 past the max, so 20 - 2)
-SELECT pingpong(28, 10, 20); -- Returns 12 (8 past the max, so 20 - 8)
+SELECT pingpong(12, 10, 20);
+-- 12.0
 
-Technical Notes
+-- 2 past the max (20), so it bounces back to 18
+SELECT pingpong(22, 10, 20);
+-- 18.0
 
-Periodicity: The output cycle repeats every 2×(max_val−min_val).
-
-Continuity:
-
-For DOUBLE types, pingpong() is a continuous function.
-
-For BIGINT types, the function is a discrete stepped approximation of a continuous wave. While it avoids the "teleportation" jump seen in wrap(), the values will increment/decrement by whole numbers.
-
-Internal Precision: By promoting inputs to double precision internally, the function avoids integer truncation errors (e.g., 3/20=0.15). This ensures that even with integer inputs, the "bounce" is calculated accurately before being rounded/cast back to the result type.
-
-Negative Handling: Using std::floor on the promoted double values ensures the oscillation remains mathematically consistent and phase-aligned across the entire number line, including negative inputs.
-
+-- 8 past the max (20), so it bounces back to 12
+SELECT pingpong(28, 10, 20);
+-- 12.0
+```
 ---
 ### fract(val)
 
-TODO
+Returns the fractional (decimal) part of a number.  This is defined as
+x - floor(x).
 
-add definitions and examples here
+Isolates the digits following the decimal point.  For negative numbers,
+`fract` returns the positive remainder required to reach the next
+lower integer.
 
+```sql
+-- Standard use
+SELECT fract(1.75);
+-- 0.75
+
+-- Integer inputs always return 0
+SELECT fract(10);
+-- 0.0
+
+-- Negative wrapping (Blender/Shader style)
+SELECT fract(-0.1);
+-- 0.9
+
+```
 ---
 
 ## Function Signatures
@@ -270,6 +270,8 @@ clip(value, min, max)
 saturate(value)
 clamp01(value)
 wrap(value, min, max)
+pingpong(value, min, max)
+fract(value)
 ```
 
 ### Parameters
@@ -296,6 +298,8 @@ All arguments must be of the same type.
 | clamp01   | ✓      | ✓      |
 | clip      | ✓      | ✓      |
 | wrap      | ✓      | ✓      |
+| pingpong  | ✓      | ✓      |
+| fract     | ✓      | ✓      |
 
 ---
 

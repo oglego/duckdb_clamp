@@ -450,6 +450,42 @@ SELECT pingpong(5, 20, 10);
 ----
 Error: Minimum bound (20) cannot be greater than or equal to maximum bound (10).
 
+# Test BIGINT
+query I
+SELECT pingpong(13::BIGINT, 10::BIGINT, 20::BIGINT);
+----
+13
+
+# Test: Large BIGINT values
+query I
+SELECT pingpong(9223372036854775800, 0, 9223372036854775806);
+----
+9223372036854775800
+
+# Test: Pingpong zero range (should error)
+statement error
+SELECT pingpong(15, 10, 10);
+----
+Error: Minimum bound (10) cannot be greater than or equal to maximum bound (10).
+
+# Misc Test
+query I
+SELECT pingpong(12, 10, 20);
+----
+12.0
+
+# Misc Test
+query I
+SELECT pingpong(22, 10, 20);
+----
+18.0
+
+# Misc Test
+query I
+SELECT pingpong(28, 10, 20);
+----
+12.0
+
 # ------------------------------------------------------------------------------
 # FRACT TESTS
 # ------------------------------------------------------------------------------
@@ -489,3 +525,27 @@ query I
 SELECT fract(CAST('NaN' AS DOUBLE));
 ----
 NaN
+
+# Test: Fract near integer boundaries
+query II
+SELECT fract(0.9999999999), fract(-0.0000000001);
+----
+0.9999999999	0.9999999999
+
+# Misc Test
+query I
+SELECT fract(1.75);
+----
+0.75
+
+# Misc Test
+query I
+SELECT fract(10);
+----
+0.0
+
+# Misc Test
+query I
+SELECT fract(-0.1);
+----
+0.9
