@@ -195,6 +195,9 @@ Definition:
 WRAP(x, min_val, max_val) = min_val + ((x - min_val) % (max_val - min_val))
 
 ```sql
+SELECT wrap(11, 0, 10);
+-- 1
+
 SELECT wrap(25, 10, 20);
 --15
 
@@ -224,6 +227,9 @@ direction and decreases back toward `min`.  The output is periodic with a full
 "round-trip" period of 2 * (max-min).
 
 ```sql
+SELECT pingpong(11, 0, 10);
+-- 9
+
 -- Oscillation between 10 and 20
 SELECT pingpong(12, 10, 20);
 -- 12.0
