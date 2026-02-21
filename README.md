@@ -19,7 +19,9 @@ It currently provides:
 - `clip(value, min, max)` - alias for `clamp`
 - `saturate(value)` — clamp to the `[0, 1]` range
 - `clamp01(value)` — alias for `saturate`, common in graphics and ML
-- `wrap(value, min, max)` - Wrap a value x into the range [min_val, max_val) using modular arithmetic.
+- `wrap(value, min, max)` - Wrap a value x into the range [min_val, max_val) using modular arithmetic
+- `pingpong(value, min, max)` - Return a value that "bounces" back and forth between the minimum and maximum
+- `fract(value)` - Return the fractional (decimal) part of a number
 
 All functions are implemented as native DuckDB scalar functions with
 vectorized execution for high performance.
@@ -30,16 +32,17 @@ vectorized execution for high performance.
 
 - Native DuckDB scalar functions (`ScalarFunctionSet`)
 - Vectorized execution via DuckDB executors
-  - `TernaryExecutor` for `clamp` / `clip` / `wrap`
-  - `UnaryExecutor` for `saturate` / `clamp01`
+  - `TernaryExecutor` for `clamp` / `clip` / `wrap` / `pingpong`
+  - `UnaryExecutor` for `saturate` / `clamp01` / `fract`
 - Supports:
-  - `BIGINT` (`int64_t`) — `clamp`, `saturate1`, `clamp01`, `clip`, `wrap`
-  - `DOUBLE` — `clamp`, `saturate`, `clamp01`, `clip`, `wrap`
+  - `BIGINT` (`int64_t`) — `clamp`, `saturate1`, `clamp01`, `clip`, `wrap`, `pingpong`, `fract`
+  - `DOUBLE` — `clamp`, `saturate`, `clamp01`, `clip`, `wrap`, `pingpong`, `fract`
 - NULL-safe:
   - returns `NULL` if any input argument is `NULL`
 - Strict validation:
   - `clamp` / `clip` throws an error if `min > max`
   - `wrap` throws an error if `min >= max`
+  - `pingpong` throws an error if `min>=max`
 
 ---
 
@@ -192,6 +195,9 @@ Definition:
 WRAP(x, min_val, max_val) = min_val + ((x - min_val) % (max_val - min_val))
 
 ```sql
+SELECT wrap(11, 0, 10);
+-- 1
+
 SELECT wrap(25, 10, 20);
 --15
 
@@ -209,6 +215,58 @@ SELECT wrap(370, 0, 360), wrap(-10, 0, 360), wrap(720, 0, 360);
 -- 10.0	350.0	0.0
 ```
 ---
+### pingpong(value, min, max)
+
+Returns a value that "bounces" back and forth between the minimum and maximum
+boundaries.  This creates a triangle wave pattern, commonly used for smooth
+oscillations in animations and procedural generation.
+
+When `value` is at `min`, the result is `min`.  As `value` increases toward 
+`max`, the result increases linearly.  Upon hitting `max`, the result reverses
+direction and decreases back toward `min`.  The output is periodic with a full
+"round-trip" period of 2 * (max-min).
+
+```sql
+SELECT pingpong(11, 0, 10);
+-- 9
+
+-- Oscillation between 10 and 20
+SELECT pingpong(12, 10, 20);
+-- 12.0
+
+-- 2 past the max (20), so it bounces back to 18
+SELECT pingpong(22, 10, 20);
+-- 18.0
+
+-- 8 past the max (20), so it bounces back to 12
+SELECT pingpong(28, 10, 20);
+-- 12.0
+```
+---
+### fract(val)
+
+Returns the fractional (decimal) part of a number.  This is defined as
+x - floor(x).
+
+Isolates the digits following the decimal point.  For negative numbers,
+`fract` returns the positive remainder required to reach the next
+lower integer.
+
+```sql
+-- Standard use
+SELECT fract(1.75);
+-- 0.75
+
+-- Integer inputs always return 0
+SELECT fract(10);
+-- 0.0
+
+-- Negative wrapping (Blender/Shader style)
+SELECT fract(-0.1);
+-- 0.9
+
+```
+---
 
 ## Function Signatures
 
@@ -218,6 +276,8 @@ clip(value, min, max)
 saturate(value)
 clamp01(value)
 wrap(value, min, max)
+pingpong(value, min, max)
+fract(value)
 ```
 
 ### Parameters
@@ -244,6 +304,8 @@ All arguments must be of the same type.
 | clamp01   | ✓      | ✓      |
 | clip      | ✓      | ✓      |
 | wrap      | ✓      | ✓      |
+| pingpong  | ✓      | ✓      |
+| fract     | ✓      | ✓      |
 
 ---
 
@@ -278,21 +340,11 @@ make test
 ## Potential Future Additions
 
 While this extension currently provides `clamp`, `clip`, `wrap`, `saturate`, and
-`clamp01`, it intentionally leaves room for other mathematically
+others, it intentionally leaves room for other mathematically
 range-based utilities that frequently appear in numerical computing,
 analytics, and graphics domains.
 
 Possible future additions include:
-
-- **Ping-Pong**  
-  Reflects values back and forth between bounds, useful for oscillating
-  ranges or bounded waveforms.
-
-- **Lerp (Linear Interpolation)**  
-  Interpolates between two values using a normalized parameter.
-
-- **Fract**  
-  Returns the fractional (decimal) part of a floating-point number.
 
 - **IsPowerOfTwo**
   Boolean check that returns `true` if a number is a power of two.

@@ -4,6 +4,9 @@
 #include "duckdb.hpp"
 #include "duckdb/function/scalar_function.hpp"
 #include <algorithm>
+#include <cmath>
+#include <limits>
+#include <type_traits>
 
 namespace duckdb {
 
@@ -140,6 +143,147 @@ static void WrapFunction(DataChunk &args, ExpressionState &state, Vector &result
 }
 
 //------------------------------------------------------------------------------
+// FractOperator: Decimal part of a number (x - floor(x))
+//------------------------------------------------------------------------------
+// Helper for floating point types (double, float)
+template <class T>
+static inline typename std::enable_if<std::is_floating_point<T>::value, T>::type FractLogic(T a) {
+	return a - std::floor(a);
+}
+
+// Helper for non-floating point types (int64_t, etc.)
+template <class T>
+static inline typename std::enable_if<!std::is_floating_point<T>::value, T>::type FractLogic(T a) {
+	return 0;
+}
+
+struct FractOperator {
+	template <class T>
+	static inline T Operation(T a) {
+		// No NaNs in integers, but let the compiler handle the check for floats
+		if (std::is_floating_point<T>::value) {
+			if (std::isnan(static_cast<double>(a))) {
+				return std::numeric_limits<T>::quiet_NaN();
+			}
+		}
+
+		return FractLogic<T>(a);
+	}
+};
+
+//------------------------------------------------------------------------------
+// FractFunction: DuckDB executor wrapper for FractOperator
+//------------------------------------------------------------------------------
+template <class T>
+static void FractFunction(DataChunk &args, ExpressionState &state, Vector &result) {
+	UnaryExecutor::Execute<T, T>(args.data[0], result, args.size(), FractOperator::Operation<T>);
+}
+
+//------------------------------------------------------------------------------
+// PingPongOperator: Triangle Wave Generator
+//------------------------------------------------------------------------------
+// Based on the Blender/GLSL math logic. It creates a continuous oscillation
+// between min_val and max_val. As 'val' increases, the result moves from
+// min to max, then reverses back to min.
+//------------------------------------------------------------------------------
+
+// Helper for Integers
+// Uses integer division and modulus to create a triangle wave pattern
+template <class T>
+static inline typename std::enable_if<std::is_integral<T>::value, T>::type PingPongLogic(T val, T min_val, T max_val) {
+	// Calculate range. We use uint64_t for the range to safely
+	// handle the case where max is max_int and min is min_int.
+	uint64_t u_range = static_cast<uint64_t>(max_val) - static_cast<uint64_t>(min_val);
+	if (u_range == 0)
+		return min_val;
+
+	// Calculate offset. We use __int128 if available for absolute safety,
+	// but for standard BIGINT, we can use careful logic with the range.
+	int64_t offset = static_cast<int64_t>(val) - static_cast<int64_t>(min_val);
+
+	// Euclidean Division: Calculate quotient and remainder such that
+	// remainder is always in [0, u_range).
+	int64_t q = offset / static_cast<int64_t>(u_range);
+	int64_t r = offset % static_cast<int64_t>(u_range);
+
+	// Adjust for negative offsets to ensure a continuous wave across the origin
+	if (r < 0) {
+		r += u_range;
+		q -= 1;
+	}
+
+	// Parity Check (The Bounce)
+	// If the quotient is even (0, 2, -2...), we are moving UP from min.
+	// If the quotient is odd (1, 3, -1, -3...), we are moving DOWN from max.
+	if (std::abs(q) % 2 == 0) {
+		return static_cast<T>(static_cast<uint64_t>(min_val) + r);
+	} else {
+		return static_cast<T>(static_cast<uint64_t>(max_val) - r);
+	}
+}
+
+// Helper for Floating Point
+// Uses fmod and floating point arithmetic to create a triangle wave pattern
+template <class T>
+static inline typename std::enable_if<std::is_floating_point<T>::value, T>::type PingPongLogic(T val, T min_val,
+                                                                                               T max_val) {
+	double d_val = static_cast<double>(val);
+	double d_min = static_cast<double>(min_val);
+	double d_max = static_cast<double>(max_val);
+
+	double range = d_max - d_min;
+	double period = range * 2.0;
+
+	// Use fmod for doubles instead of %
+	double t = std::fmod(d_val - d_min, period);
+	if (t < 0)
+		t += period;
+
+	if (t > range) {
+		return static_cast<T>(d_min + (period - t));
+	}
+	return static_cast<T>(d_min + t);
+}
+
+struct PingPongOperator {
+	template <class T>
+	static inline T Operation(T val, T min_val, T max_val) {
+		// Use standard is_floating_point<T>::value for C++11 compatibility
+		if (std::is_floating_point<T>::value) {
+			if (std::isnan(static_cast<double>(val)) || std::isnan(static_cast<double>(min_val)) ||
+			    std::isnan(static_cast<double>(max_val))) {
+				return std::numeric_limits<T>::quiet_NaN();
+			}
+		}
+
+		// Validate bounds: min_val must not be greater than or equal to max_val
+		if (min_val >= max_val) {
+			throw InvalidInputException(
+			    "Error: Minimum bound (%s) cannot be greater than or equal to maximum bound (%s).",
+			    std::to_string(min_val), std::to_string(max_val));
+		}
+
+		// The compiler picks the correct PingPongLogic overload at compile time
+		return PingPongLogic<T>(val, min_val, max_val);
+	}
+};
+
+//------------------------------------------------------------------------------
+// PingPongFunction: DuckDB executor wrapper for PingPongOperator
+//------------------------------------------------------------------------------
+template <class T>
+static void PingPongFunction(DataChunk &args, ExpressionState &state, Vector &result) {
+	// Uses DuckDB's TernaryExecutor to apply PingPongOperator::Operation to each row
+	// args.data[0]: value to pingpong
+	// args.data[1]: minimum bound
+	// args.data[2]: maximum bound
+	// result: output vector
+	// args.size(): number of rows
+	TernaryExecutor::Execute<T, T, T, T>(args.data[0], args.data[1], args.data[2], result, args.size(),
+	                                     PingPongOperator::Operation<T>);
+}
+
+//------------------------------------------------------------------------------
 // LoadInternal: Registers the clamp function(s) with DuckDB
 //------------------------------------------------------------------------------
 static void LoadInternal(ExtensionLoader &loader) {
@@ -210,12 +354,56 @@ static void LoadInternal(ExtensionLoader &loader) {
 	wrap.AddFunction(double_wrap_fun);
 	wrap.AddFunction(bigint_wrap_fun);
 
+	// ------------------------------------------------------------------------------
+	// PINGPONG
+	// ------------------------------------------------------------------------------
+	ScalarFunctionSet pingpong("pingpong");
+
+	// Define pingpong for DOUBLE type
+	auto double_pingpong_fun =
+	    ScalarFunction({LogicalType::DOUBLE, LogicalType::DOUBLE, LogicalType::DOUBLE}, // argument types
+	                   LogicalType::DOUBLE,                                             // return type
+	                   PingPongFunction<double>                                         // implementation
+	    );
+	// Specify null handling: returns NULL if any input is NULL
+	double_pingpong_fun.null_handling = FunctionNullHandling::DEFAULT_NULL_HANDLING;
+
+	// Define pingpong for BIGINT (int64_t) type
+	auto bigint_pingpong_fun = ScalarFunction({LogicalType::BIGINT, LogicalType::BIGINT, LogicalType::BIGINT},
+	                                          LogicalType::BIGINT, PingPongFunction<int64_t>);
+	bigint_pingpong_fun.null_handling = FunctionNullHandling::DEFAULT_NULL_HANDLING;
+
+	// Add both type-specific implementations to the function set
+	pingpong.AddFunction(double_pingpong_fun);
+	pingpong.AddFunction(bigint_pingpong_fun);
+
+	// ------------------------------------------------------------------------------
+	// FRACT
+	// ------------------------------------------------------------------------------
+	ScalarFunctionSet fract("fract");
+
+	// Define fract for DOUBLE type
+	auto double_fract_fun = ScalarFunction({LogicalType::DOUBLE}, LogicalType::DOUBLE, FractFunction<double>);
+	double_fract_fun.null_handling = FunctionNullHandling::DEFAULT_NULL_HANDLING;
+	fract.AddFunction(double_fract_fun);
+
+	// Define fract for BIGINT (int64_t) type
+	auto bigint_fract_fun = ScalarFunction({LogicalType::BIGINT}, LogicalType::BIGINT, FractFunction<int64_t>);
+	bigint_fract_fun.null_handling = FunctionNullHandling::DEFAULT_NULL_HANDLING;
+	fract.AddFunction(bigint_fract_fun);
+
+	// ------------------------------------------------------------------------------
+	// REGISTER FUNCTIONS
+	// ------------------------------------------------------------------------------
+
 	// Register the function set with DuckDB
 	loader.RegisterFunction(clamp);
 	loader.RegisterFunction(clamp_alias);
 	loader.RegisterFunction(saturate);
 	loader.RegisterFunction(saturate_alias);
 	loader.RegisterFunction(wrap);
+	loader.RegisterFunction(pingpong);
+	loader.RegisterFunction(fract);
 }
 
 //------------------------------------------------------------------------------
