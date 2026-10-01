@@ -22,6 +22,7 @@ It currently provides:
 - `wrap(value, min, max)` - Wrap a value x into the range [min_val, max_val) using modular arithmetic
 - `pingpong(value, min, max)` - Return a value that "bounces" back and forth between the minimum and maximum
 - `fract(value)` - Return the fractional (decimal) part of a number
+- `step(edge, value)` - Return 0 if `value < edge`, otherwise 1 (GLSL-style threshold)
 
 All functions are implemented as native DuckDB scalar functions with
 vectorized execution for high performance.
@@ -32,11 +33,12 @@ vectorized execution for high performance.
 
 - Native DuckDB scalar functions (`ScalarFunctionSet`)
 - Vectorized execution via DuckDB executors
+  - `BinaryExecutor` for `step`
   - `TernaryExecutor` for `clamp` / `clip` / `wrap` / `pingpong`
   - `UnaryExecutor` for `saturate` / `clamp01` / `fract`
 - Supports:
-  - `BIGINT` (`int64_t`) — `clamp`, `saturate1`, `clamp01`, `clip`, `wrap`, `pingpong`, `fract`
-  - `DOUBLE` — `clamp`, `saturate`, `clamp01`, `clip`, `wrap`, `pingpong`, `fract`
+  - `BIGINT` (`int64_t`) — `clamp`, `saturate`, `clamp01`, `clip`, `wrap`, `pingpong`, `fract`, `step`
+  - `DOUBLE` — `clamp`, `saturate`, `clamp01`, `clip`, `wrap`, `pingpong`, `fract`, `step`
 - NULL-safe:
   - returns `NULL` if any input argument is `NULL`
 - Strict validation:
@@ -268,6 +270,25 @@ SELECT fract(-0.1);
 ```
 ---
 
+### step(edge, value)
+
+Returns `0` if `value < edge`, otherwise `1`.  This is the GLSL-style step
+function, used to create hard thresholds.  A value exactly equal to `edge`
+returns `1`.  `NaN` in either argument returns `NaN`.
+
+```sql
+SELECT step(0.5, 0.25);
+-- 0.0
+
+SELECT step(0.5, 0.5);
+-- 1.0
+
+-- Integer inputs return integers
+SELECT step(5, 6);
+-- 1
+```
+---
+
 ## Function Signatures
 
 ```
@@ -278,6 +299,7 @@ clamp01(value)
 wrap(value, min, max)
 pingpong(value, min, max)
 fract(value)
+step(edge, value)
 ```
 
 ### Parameters
@@ -290,6 +312,9 @@ fract(value)
 
 - `max`
   Upper bound (inclusive). Used only by `clamp`.
+
+- `edge`
+  The threshold. Used only by `step`.
 
 All arguments must be of the same type.
 
@@ -306,6 +331,7 @@ All arguments must be of the same type.
 | wrap      | ✓      | ✓      |
 | pingpong  | ✓      | ✓      |
 | fract     | ✓      | ✓      |
+| step      | ✓      | ✓      |
 
 ---
 
@@ -318,6 +344,15 @@ All arguments must be of the same type.
   enabling efficient batch execution.
 - NULL handling uses DuckDB’s `DEFAULT_NULL_HANDLING`, ensuring standard
   SQL semantics.
+- Functions are registered through `CreateScalarFunctionInfo` so each one
+  carries a description, real parameter names, an example and a category.
+  This metadata is queryable from SQL:
+
+  ```sql
+  SELECT DISTINCT function_name, parameters, description, examples
+  FROM duckdb_functions()
+  WHERE function_name = 'wrap';
+  ```
 
 ---
 

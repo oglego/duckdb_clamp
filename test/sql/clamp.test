@@ -558,3 +558,133 @@ query I
 SELECT fract(42.25);
 ----
 0.25
+
+# ------------------------------------------------------------------------------
+# STEP
+# ------------------------------------------------------------------------------
+
+# Test: Below, at, and above the edge (x == edge returns 1)
+query III
+SELECT step(0.5, 0.25), step(0.5, 0.5), step(0.5, 0.75);
+----
+0.0	1.0	1.0
+
+# Test: Integer inputs
+query III
+SELECT step(5, 4), step(5, 5), step(5, 6);
+----
+0	1	1
+
+# Test: Negative values
+query II
+SELECT step(-1.0, -2.0), step(-1.0, -0.5);
+----
+0.0	1.0
+
+# Test: Negative zero equals zero
+query I
+SELECT step(0.0, -0.0);
+----
+1.0
+
+# Test: Infinities
+query II
+SELECT step(0.0, CAST('inf' AS DOUBLE)), step(0.0, CAST('-inf' AS DOUBLE));
+----
+1.0	0.0
+
+# Test: BIGINT boundaries
+query II
+SELECT step(9223372036854775807, -9223372036854775808), step(-9223372036854775808, 9223372036854775807);
+----
+0	1
+
+# Test: NULL handling in each argument position
+query II
+SELECT step(NULL, 1.0), step(1.0, NULL);
+----
+NULL	NULL
+
+# Test: NaN propagation in each argument position
+query II
+SELECT step(CAST('NaN' AS DOUBLE), 1.0), step(1.0, CAST('NaN' AS DOUBLE));
+----
+NaN	NaN
+
+# Test: Column input (flat vectors) with constant edge
+query II
+SELECT i, step(5, i) FROM range(3, 8) t(i) ORDER BY i;
+----
+3	0
+4	0
+5	1
+6	1
+7	1
+
+# Test: Both arguments as columns
+query I
+SELECT sum(step(a, b)) FROM (VALUES (1, 2), (3, 2), (2, 2), (5, 9)) t(a, b);
+----
+3
+
+# ------------------------------------------------------------------------------
+# FUNCTION METADATA (duckdb_functions)
+# ------------------------------------------------------------------------------
+
+# Test: Every registered overload has a description
+query I
+SELECT count(*) FROM duckdb_functions()
+WHERE function_name IN ('clamp', 'clip', 'saturate', 'clamp01', 'wrap', 'pingpong', 'fract', 'step')
+  AND (description IS NULL OR description = '');
+----
+0
+
+# Test: Every registered overload has at least one example
+query I
+SELECT count(*) FROM duckdb_functions()
+WHERE function_name IN ('clamp', 'clip', 'saturate', 'clamp01', 'wrap', 'pingpong', 'fract', 'step')
+  AND len(examples) = 0;
+----
+0
+
+# Test: No placeholder parameter names (col0, col1, ...)
+query I
+SELECT count(*) FROM duckdb_functions()
+WHERE function_name IN ('clamp', 'clip', 'saturate', 'clamp01', 'wrap', 'pingpong', 'fract', 'step')
+  AND array_to_string(parameters, ',') LIKE '%col%';
+----
+0
+
+# Test: Parameter names are the documented ones
+query II
+SELECT DISTINCT function_name, array_to_string(parameters, ',') FROM duckdb_functions()
+WHERE function_name IN ('clamp', 'saturate', 'wrap', 'pingpong', 'fract', 'step')
+ORDER BY function_name;
+----
+clamp	value,min_val,max_val
+fract	value
+pingpong	value,min_val,max_val
+saturate	value
+step	edge,value
+wrap	value,min_val,max_val
+
+# Test: Aliases are reported as aliases
+query II
+SELECT function_name, alias_of FROM duckdb_functions()
+WHERE function_name IN ('clip', 'clamp01')
+GROUP BY ALL
+ORDER BY function_name;
+----
+clamp01	saturate
+clip	clamp
+
+# Test: The documented examples produce the documented results
+query IIIIIII
+SELECT clamp(15, 0, 10), clip(15, 0, 10), saturate(1.5), clamp01(1.5), wrap(370, 0, 360), pingpong(12, 0, 10), fract(3.75);
+----
+10	10	1.0	1.0	10	8	0.75
+
+query I
+SELECT step(0.5, 0.75);
+----
+1.0

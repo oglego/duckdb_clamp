@@ -3,6 +3,7 @@
 #include "clamp_extension.hpp"
 #include "duckdb.hpp"
 #include "duckdb/function/scalar_function.hpp"
+#include "duckdb/parser/parsed_data/create_scalar_function_info.hpp"
 #include <algorithm>
 #include <cmath>
 #include <limits>
@@ -180,6 +181,36 @@ static void FractFunction(DataChunk &args, ExpressionState &state, Vector &resul
 }
 
 //------------------------------------------------------------------------------
+// StepOperator: Step function
+//------------------------------------------------------------------------------
+struct StepOperator {
+	template <class T>
+	static inline T Operation(T edge, T x) {
+		// No NaNs in integers, but let the compiler handle the check for floats
+		if (std::is_floating_point<T>::value) {
+			if (std::isnan(static_cast<double>(edge)) || std::isnan(static_cast<double>(x))) {
+				return std::numeric_limits<T>::quiet_NaN();
+			}
+		}
+
+		return x < edge ? T(0) : T(1);
+	}
+};
+
+//------------------------------------------------------------------------------
+// StepFunction: DuckDB executor wrapper for StepOperator
+//------------------------------------------------------------------------------
+template <class T>
+static void StepFunction(DataChunk &args, ExpressionState &state, Vector &result) {
+	// Uses DuckDB's BinaryExecutor to apply StepOperator::Operation to each row
+	// args.data[0]: edge (threshold)
+	// args.data[1]: value to test
+	// result: output vector
+	// args.size(): number of rows
+	BinaryExecutor::Execute<T, T, T>(args.data[0], args.data[1], result, args.size(), StepOperator::Operation<T>);
+}
+
+//------------------------------------------------------------------------------
 // PingPongOperator: Triangle Wave Generator
 //------------------------------------------------------------------------------
 // Based on the Blender/GLSL math logic. It creates a continuous oscillation
@@ -281,6 +312,41 @@ static void PingPongFunction(DataChunk &args, ExpressionState &state, Vector &re
 	// args.size(): number of rows
 	TernaryExecutor::Execute<T, T, T, T>(args.data[0], args.data[1], args.data[2], result, args.size(),
 	                                     PingPongOperator::Operation<T>);
+}
+
+//------------------------------------------------------------------------------
+// FunctionDoc / RegisterDocumented: attach catalog metadata to a function set
+//------------------------------------------------------------------------------
+// The bare loader.RegisterFunction(ScalarFunctionSet) overload cannot carry any
+// documentation. Registering through CreateScalarFunctionInfo lets each function
+// expose a description, real parameter names, examples and categories via
+// duckdb_functions(), which is how tools and AI agents discover what it does.
+struct FunctionDoc {
+	vector<string> parameter_names;
+	string description;
+	vector<string> examples;
+	vector<string> categories;
+	// Name of the function this one is an alias of (empty if not an alias)
+	string alias_of;
+};
+
+static void RegisterDocumented(ExtensionLoader &loader, ScalarFunctionSet set, const FunctionDoc &doc) {
+	CreateScalarFunctionInfo info(std::move(set));
+	// Matches what the bare RegisterFunction overload does internally; the default
+	// on CreateInfo is ERROR_ON_CONFLICT.
+	info.on_conflict = OnCreateConflict::ALTER_ON_CONFLICT;
+	info.alias_of = doc.alias_of;
+
+	// A single description with no parameter_types applies to every overload
+	// (DOUBLE and BIGINT) of the function.
+	FunctionDescription desc;
+	desc.parameter_names = doc.parameter_names;
+	desc.description = doc.description;
+	desc.examples = doc.examples;
+	desc.categories = doc.categories;
+	info.descriptions.push_back(std::move(desc));
+
+	loader.RegisterFunction(std::move(info));
 }
 
 //------------------------------------------------------------------------------
@@ -393,17 +459,83 @@ static void LoadInternal(ExtensionLoader &loader) {
 	fract.AddFunction(bigint_fract_fun);
 
 	// ------------------------------------------------------------------------------
+	// STEP
+	// ------------------------------------------------------------------------------
+	ScalarFunctionSet step("step");
+
+	// Define step for DOUBLE type
+	auto double_step_fun =
+	    ScalarFunction({LogicalType::DOUBLE, LogicalType::DOUBLE}, LogicalType::DOUBLE, StepFunction<double>);
+	double_step_fun.null_handling = FunctionNullHandling::DEFAULT_NULL_HANDLING;
+	step.AddFunction(double_step_fun);
+
+	// Define step for BIGINT (int64_t) type
+	auto bigint_step_fun =
+	    ScalarFunction({LogicalType::BIGINT, LogicalType::BIGINT}, LogicalType::BIGINT, StepFunction<int64_t>);
+	bigint_step_fun.null_handling = FunctionNullHandling::DEFAULT_NULL_HANDLING;
+	step.AddFunction(bigint_step_fun);
+
+	// ------------------------------------------------------------------------------
 	// REGISTER FUNCTIONS
 	// ------------------------------------------------------------------------------
 
-	// Register the function set with DuckDB
-	loader.RegisterFunction(clamp);
-	loader.RegisterFunction(clamp_alias);
-	loader.RegisterFunction(saturate);
-	loader.RegisterFunction(saturate_alias);
-	loader.RegisterFunction(wrap);
-	loader.RegisterFunction(pingpong);
-	loader.RegisterFunction(fract);
+	// Register each function set together with its documentation
+	RegisterDocumented(
+	    loader, clamp,
+	    {{"value", "min_val", "max_val"},
+	     "Restricts value to the range [min_val, max_val]. Returns min_val if value is below it and max_val if value "
+	     "is above it. Returns NaN if any argument is NaN and raises an error if min_val > max_val.",
+	     {"clamp(15, 0, 10)"},
+	     {"numeric"},
+	     ""});
+	RegisterDocumented(loader, clamp_alias,
+	                   {{"value", "min_val", "max_val"},
+	                    "Alias of clamp. Restricts value to the range [min_val, max_val].",
+	                    {"clip(15, 0, 10)"},
+	                    {"numeric"},
+	                    "clamp"});
+	RegisterDocumented(loader, saturate,
+	                   {{"value"},
+	                    "Restricts value to the range [0, 1]. Returns 0 for values below 0 and 1 for values above 1.",
+	                    {"saturate(1.5)"},
+	                    {"numeric"},
+	                    ""});
+	RegisterDocumented(loader, saturate_alias,
+	                   {{"value"},
+	                    "Alias of saturate. Restricts value to the range [0, 1].",
+	                    {"clamp01(1.5)"},
+	                    {"numeric"},
+	                    "saturate"});
+	RegisterDocumented(
+	    loader, wrap,
+	    {{"value", "min_val", "max_val"},
+	     "Wraps value into the half-open range [min_val, max_val) using modular arithmetic, which is useful for "
+	     "cyclic values such as angles. Raises an error if min_val >= max_val.",
+	     {"wrap(370, 0, 360)"},
+	     {"numeric"},
+	     ""});
+	RegisterDocumented(
+	    loader, pingpong,
+	    {{"value", "min_val", "max_val"},
+	     "Bounces value back and forth between min_val and max_val, producing a triangle wave. Raises an error if "
+	     "min_val >= max_val.",
+	     {"pingpong(12, 0, 10)"},
+	     {"numeric"},
+	     ""});
+	RegisterDocumented(loader, fract,
+	                   {{"value"},
+	                    "Returns the fractional part of value, computed as value - floor(value). For example the "
+	                    "result for -1.25 is 0.75. Always returns 0 for integers.",
+	                    {"fract(3.75)"},
+	                    {"numeric"},
+	                    ""});
+	RegisterDocumented(loader, step,
+	                   {{"edge", "value"},
+	                    "Threshold function that returns 0 if value < edge, otherwise 1. Returns NaN if either "
+	                    "argument is NaN.",
+	                    {"step(0.5, 0.75)"},
+	                    {"numeric"},
+	                    ""});
 }
 
 //------------------------------------------------------------------------------
